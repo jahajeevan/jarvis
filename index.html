@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#01060c" />
+
+    <!--
+      Defence in depth behind the sanitiser in src/ui/Panels.tsx.
+
+      Panel markup is written by a model that has just been reading the open
+      web, so the thing worth pinning down is `img-src`: a single
+      `<img src="https://…">` is a working beacon that reports this machine's
+      address to a host of the page author's choosing, and it needs no script to
+      fire.
+
+      JARVIS now shows images and video he found on the web, and `img-src` and
+      `media-src` stay closed anyway — that is the entire point of the design.
+      The sanitiser rewrites every remote URL to a bridge endpoint, and the
+      bridge fetches it server-side and streams it back, so the browser only
+      ever asks localhost for bytes. Opening these to https: would defeat that
+      and hand the beacon straight back. If a thumbnail arrives blank, the
+      bridge could not fetch it; it is not this policy.
+
+      `frame-src` is the one exception, and it is one because there is no
+      alternative: YouTube and Vimeo will not hand over the media file, so an
+      iframe is the only way to play a video result inline. Three hosts, and the
+      sanitiser pins the paths within them as well — any other frame is removed
+      from the markup before it reaches the DOM, so this line is the second lock
+      rather than the only one.
+
+      The bridge itself is framed too, and that is what makes blades work. A
+      publisher's X-Frame-Options is a rule enforced against the browser, so an
+      article can never be framed from here directly. The bridge fetches it
+      server-side and serves it back from localhost:8787, at which point the
+      document is ours and there is nothing cross-origin to refuse. Note what is
+      NOT relaxed: no publisher's own origin appears here, so only pages that
+      have been through the bridge — script-stripped, served under their own
+      tight CSP, and sandboxed at the iframe — can be framed at all.
+
+      The rest is loose on purpose, because the voice stack needs it:
+      'wasm-unsafe-eval' and 'unsafe-eval' for the ONNX runtime and the inline
+      espeak-ng WASM, blob: workers for the wake-word engine and the speech
+      model, ws: for both the bridge and Vite's HMR socket, https: for the
+      model download and the speech API, and 'unsafe-inline' scripts for the
+      React Fast Refresh preamble Vite injects in dev.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        base-uri 'self';
+        object-src 'none';
+        frame-src https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com http://localhost:8787 http://127.0.0.1:8787;
+        img-src 'self' data: blob: http://localhost:8787 http://127.0.0.1:8787;
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:;
+        style-src 'self' 'unsafe-inline';
+        font-src 'self' data:;
+        connect-src 'self' data: blob: https: ws: wss: http://localhost:8787 http://127.0.0.1:8787;
+        worker-src 'self' blob:;
+        media-src 'self' data: blob: http://localhost:8787 http://127.0.0.1:8787;
+      "
+    />
+
+    <title>J.A.R.V.I.S.</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

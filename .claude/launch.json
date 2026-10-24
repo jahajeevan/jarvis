@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "//": "autoPort is off on purpose. The bridge only accepts WebSocket origins on localhost:5173-5199 and 4173-4199, so a port picked outside that range starts a face that looks perfectly alive and can never reach the brain.",
+      "name": "jarvis",
+      "runtimeExecutable": "npm",
+      "//writes": "Append \"--\", \"--writes\" here to let JARVIS act — click and type in Chrome, drive the phone, run shell. Left off by default so a fresh clone starts read-only, as the README promises.",
+      "runtimeArgs": ["start"],
+      "port": 5180,
+      "autoPort": false
+    }
+  ]
+}
