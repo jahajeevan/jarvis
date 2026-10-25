@@ -42,6 +42,30 @@ private enum JarvisRuntime {
       .map { URL(fileURLWithPath: $0) }
       .first { FileManager.default.isExecutableFile(atPath: $0.path) }
   }
+
+  /// Keys used by the installed application live outside both the repository
+  /// and the app bundle. This prevents an API key from being accidentally
+  /// copied into a DMG, Git commit, or shared project folder.
+  static var privateEnvironment: [String: String] {
+    let file = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Library/Application Support/JARVIS/.env.local")
+    guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+      return [:]
+    }
+    let permitted = Set([
+      "JARVIS_BRAIN",
+      "JARVIS_NVIDIA_API_KEY",
+      "JARVIS_NVIDIA_URL",
+    ])
+    return source.split(whereSeparator: \.isNewline).reduce(into: [:]) { values, line in
+      let text = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !text.hasPrefix("#"), let separator = text.firstIndex(of: "=") else { return }
+      let key = String(text[..<separator]).trimmingCharacters(in: .whitespaces)
+      let value = String(text[text.index(after: separator)...]).trimmingCharacters(in: .whitespaces)
+      guard permitted.contains(key), !value.isEmpty else { return }
+      values[key] = value
+    }
+  }
 }
 
 @MainActor
@@ -68,6 +92,21 @@ final class RuntimeController: ObservableObject {
       if bridgeReady && ollamaReady && faceReady { status = "Local brain online" }
       beginHealthChecks()
     }
+  }
+
+  /// The packaged app owns the services it starts. Releasing them when the
+  /// app exits prevents an orphaned Vite process from blocking the next launch
+  /// and leaving JARVIS with an apparently live but unresponsive face.
+  func stop() {
+    timer?.invalidate()
+    timer = nil
+    for child in [process, faceProcess, ollamaProcess] {
+      guard let child, child.isRunning else { continue }
+      child.terminate()
+    }
+    process = nil
+    faceProcess = nil
+    ollamaProcess = nil
   }
 
   private func launchOllama() {
@@ -109,7 +148,9 @@ final class RuntimeController: ObservableObject {
     child.executableURL = node
     child.arguments = ["scripts/start.mjs"]
     child.currentDirectoryURL = JarvisRuntime.projectRoot
-    child.environment = ProcessInfo.processInfo.environment.merging([
+    var environment = ProcessInfo.processInfo.environment
+    environment.merge(JarvisRuntime.privateEnvironment) { _, privateValue in privateValue }
+    environment.merge([
       "PORT": "5173",
       "JARVIS_FACE_PORT": "5173",
       // This is a packaged, local-only desktop assistant. Individual services
@@ -118,6 +159,7 @@ final class RuntimeController: ObservableObject {
       // grammar, never spoken shell code.
       "JARVIS_ALLOW_MACOS_ACTIONS": "1",
     ]) { _, new in new }
+    child.environment = environment
     child.standardOutput = Pipe()
     child.standardError = Pipe()
     child.terminationHandler = { [weak self] _ in
@@ -208,6 +250,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     false
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    RuntimeController.shared.stop()
   }
 }
 

@@ -4,6 +4,8 @@
 
 JARVIS combines a reactive holographic interface with a local Qwen model, offline speech-to-text, optional local neural speech, gesture controls, private memory, and opt-in web research. It is designed to feel like a showpiece while keeping your conversations and device data on your machine by default.
 
+For the installed macOS app, place NVIDIA settings in `~/Library/Application Support/JARVIS/.env.local`; this location is deliberately outside the app bundle and Git checkout. The app reads only `JARVIS_BRAIN`, `JARVIS_NVIDIA_API_KEY`, and `JARVIS_NVIDIA_URL` from that file.
+
 > This is a fan-made productivity and interface project. It is not affiliated with Marvel or any of its properties.
 
 ## What it can do
