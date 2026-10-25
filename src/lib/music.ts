@@ -43,6 +43,14 @@ const missing = new Set<Cue>()
  */
 const finished = new Set<Cue>()
 const ALL: Cue[] = ['boot-music', 'ambient', 'work', 'welcome']
+const FILE: Record<Cue, string> = {
+  'boot-music': 'boot-music.mp3',
+  ambient: 'ambient.mp3',
+  work: 'work.mp3',
+  // Kept under its supplied filename so packaging can never silently point at
+  // a non-existent `welcome.mp3`.
+  welcome: 'welcome_back_jarvis.mp3',
+}
 let enabled = false
 
 /** Resting levels. Music sits well under the voice — it is atmosphere, not a
@@ -85,7 +93,7 @@ function track(cue: Cue): Track | null {
   if (!enabled || missing.has(cue)) return null
   let t = tracks.get(cue)
   if (!t) {
-    const el = new Audio(`/audio/${cue}.mp3`)
+    const el = new Audio(`/audio/${FILE[cue]}`)
     el.preload = 'auto'
     // Only the work cue repeats. It has to, because it covers an operation of
     // unknown length; the two power-up cues are events with an end.
@@ -123,6 +131,24 @@ export function enable() {
   enabled = true
   // Warm the files so the boot cue starts on time rather than after a buffer.
   ALL.forEach(track)
+}
+
+/** Establish WebKit media permission while ignition is still a real click.
+ * Playback is immediately rewound and paused; the arrival sound itself still
+ * begins only after the boot film has finished. */
+export function primeWelcome() {
+  const t = track('welcome')
+  if (!t) return
+  const { el } = t
+  el.muted = true
+  el.currentTime = 0
+  void el.play().then(() => {
+    el.pause()
+    el.currentTime = 0
+    el.muted = false
+  }).catch(() => {
+    el.muted = false
+  })
 }
 
 /**

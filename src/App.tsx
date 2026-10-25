@@ -207,6 +207,9 @@ export default function App() {
       welcomeTimers.current.push(window.setTimeout(work, delay))
     }
     const s = store.getState()
+    // The boot-film score belongs to the first sequence only. Cut it before
+    // the owner-arrival voice takes the stage.
+    music.stopAll()
     s.setCaption('WELCOME BACK // ARC REACTOR ARRIVAL SEQUENCE')
     s.applyUi({ accent: '#57e9ff', background: '#020913', reactor: { color: '#57e9ff', style: 'wire', scale: 0.42, intensity: 0.24, spin: 0.12 } })
     s.fireEffect('scan')
@@ -784,6 +787,11 @@ export default function App() {
     // Preload the owner's arrival line while this user gesture has audio
     // permission. It starts only after the boot film has fully resolved.
     music.enable()
+    music.primeWelcome()
+    // The video transition keeps its own score; it fades out before the
+    // welcome clip begins on the live arc.
+    music.playBoot()
+    music.startAmbient()
 
     s.setPhase('boot')
 
