@@ -1325,7 +1325,7 @@ console.log(
   BRAIN === 'ollama'
     ? `[jarvis] local brain ${OLLAMA_MODEL} via ${OLLAMA_URL}`
     : BRAIN === 'nvidia'
-      ? `[jarvis] NVIDIA NIM ${NVIDIA_MODELS[0].id} · Shift+M toggles Bolt / Lightning`
+      ? `[jarvis] NVIDIA NIM ${NVIDIA_MODELS[0].id} · Shift+M cycles Bolt / Lightning / Qwen Local`
     : `[jarvis] cloud model ${MODEL} · effort ${EFFORT}`,
 )
 console.log(

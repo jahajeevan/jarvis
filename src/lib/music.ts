@@ -1,10 +1,11 @@
 /**
  * Score.
  *
- * Three cues, all local files under public/audio/:
+ * Four cues, all local files under public/audio/:
  *   boot-music — the JARVIS start-up sound, once, as the reactor comes up
  *   ambient    — the opening music, once, alongside it
  *   work       — an industrial cue that loops while a tool is running
+ *   welcome    — the owner's arrival line, after the boot film resolves
  *
  * Only `work` repeats. The other two belong to the power-up and are over when
  * it is: an interface that keeps playing music at you for as long as it is open
@@ -19,7 +20,7 @@
  * play, and the synthesised bed in sfx.ts covers the ambient case.
  */
 
-type Cue = 'boot-music' | 'ambient' | 'work'
+type Cue = 'boot-music' | 'ambient' | 'work' | 'welcome'
 
 type Track = {
   el: HTMLAudioElement
@@ -41,7 +42,7 @@ const missing = new Set<Cue>()
  * sentence. It never looped; it was raised from the dead once a turn.
  */
 const finished = new Set<Cue>()
-const ALL: Cue[] = ['boot-music', 'ambient', 'work']
+const ALL: Cue[] = ['boot-music', 'ambient', 'work', 'welcome']
 let enabled = false
 
 /** Resting levels. Music sits well under the voice — it is atmosphere, not a
@@ -65,6 +66,7 @@ const LEVEL: Record<Cue, number> = {
    */
   ambient: 0.1,
   work: 0.11,
+  welcome: 1,
 }
 
 /**
@@ -73,7 +75,7 @@ const LEVEL: Record<Cue, number> = {
  * is speaking brings the work cue in at its ducked level rather than at full,
  * and it rises the rest of the way when he stops.
  */
-const want: Record<Cue, number> = { 'boot-music': 0, ambient: 0, work: 0 }
+const want: Record<Cue, number> = { 'boot-music': 0, ambient: 0, work: 0, welcome: 0 }
 
 let ducked = false
 /** How far the bed drops under the voice. */
@@ -130,7 +132,7 @@ export function enable() {
  * headroom being made.
  */
 function level(cue: Cue): number {
-  return ducked && cue !== 'boot-music' ? want[cue] * DUCK : want[cue]
+  return ducked && cue !== 'boot-music' && cue !== 'welcome' ? want[cue] * DUCK : want[cue]
 }
 
 function fadeTo(cue: Cue, to: number, ms: number) {
@@ -216,6 +218,33 @@ export function startAmbient() {
   finished.delete('ambient')
   t.el.currentTime = 0
   set('ambient', LEVEL.ambient, 900)
+}
+
+/**
+ * The owner's arrival line. It is intentionally a one-shot and returns only
+ * after the actual file has ended, allowing the boot choreography to stay
+ * locked to its real duration rather than a guessed timer.
+ */
+export function playWelcome(): Promise<void> {
+  const t = track('welcome')
+  if (!t) return Promise.resolve()
+  finished.delete('welcome')
+  t.el.currentTime = 0
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(fallback)
+      resolve()
+    }
+    // A media element may refuse playback without emitting either `error` or
+    // `ended` in an embedded WebView. Never leave the boot lock stranded.
+    const fallback = window.setTimeout(finish, 18_000)
+    t.el.addEventListener('ended', finish, { once: true })
+    t.el.addEventListener('error', finish, { once: true })
+    set('welcome', LEVEL.welcome, 80)
+  })
 }
 
 export function stopAll() {

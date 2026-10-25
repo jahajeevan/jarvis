@@ -104,6 +104,10 @@ export default function App() {
   const arcResetSince = useRef<number | null>(null)
   const arcControlAppearance = useRef<ReturnType<typeof snapshotArcAppearance> | null>(null)
   const preferredArcColour = useRef<string | null>(null)
+  const introLocked = useRef(false)
+  const welcomeTimers = useRef<number[]>([])
+  const lightingTimer = useRef<number | null>(null)
+  const lightingMode = useRef(-1)
   // Explicitly a browser timer: WebKit returns a number while the Node types
   // used by the build describe a Timeout object.
   const arcPoll = useRef<number | null>(null)
@@ -124,7 +128,12 @@ export default function App() {
 
   function snapshotArcAppearance() {
     const ui = store.getState().ui
-    return { accent: ui.accent, reactor: { ...ui.reactor } }
+    return { accent: ui.accent, background: ui.background, reactor: { ...ui.reactor } }
+  }
+
+  const clearLightingMode = () => {
+    if (lightingTimer.current !== null) clearInterval(lightingTimer.current)
+    lightingTimer.current = null
   }
 
   const restorePreferredArcColour = () => {
@@ -135,6 +144,7 @@ export default function App() {
   const setArcColour = (name: string) => {
     const colour = ARC_COLOURS[name]
     if (!colour) return false
+    clearLightingMode()
     preferredArcColour.current = colour
     const s = store.getState()
     s.applyUi({ accent: colour, reactor: { color: colour, intensity: 1.35, spin: 1.25 } })
@@ -142,6 +152,104 @@ export default function App() {
     s.setCaption(`ARC CORE // ${name.toUpperCase()} SPECTRUM LOCKED`)
     sfx.play('done')
     return true
+  }
+
+  /** Mechanical-keyboard-style reactor profiles. I moves through the whole
+   * rack; the RGB wave is deliberately live rather than a single colour. */
+  const cycleArcLighting = () => {
+    clearLightingMode()
+    lightingMode.current = (lightingMode.current + 1) % 5
+    const s = store.getState()
+    const fixed = (label: string, colour: string, background: string) => {
+      preferredArcColour.current = colour
+      s.applyUi({
+        accent: colour,
+        background,
+        reactor: { color: colour, style: 'ring', scale: 1, intensity: 1.45, spin: 1.45 },
+      })
+      s.setCaption(`ARC LIGHTING // ${label}`)
+    }
+
+    if (lightingMode.current === 0) fixed('AURORA', '#52ffe1', '#03130f')
+    else if (lightingMode.current === 1) fixed('MAGMA', '#ff714d', '#190806')
+    else if (lightingMode.current === 2) fixed('ULTRAVIOLET', '#b588ff', '#0d061a')
+    else if (lightingMode.current === 3) {
+      const wave = ['#52ffe1', '#6ca8ff', '#b588ff', '#ff5f9a', '#ffb45c', '#63f6bd']
+      let step = 0
+      const paint = () => {
+        const colour = wave[step++ % wave.length]
+        preferredArcColour.current = colour
+        const live = store.getState()
+        live.applyUi({ accent: colour, background: '#070614', reactor: { color: colour, style: 'ring', intensity: 1.65, spin: 2.1 } })
+      }
+      paint()
+      lightingTimer.current = window.setInterval(paint, 440)
+      s.setCaption('ARC LIGHTING // RGB WAVE')
+    } else {
+      preferredArcColour.current = null
+      s.applyUi({
+        accent: null,
+        background: null,
+        reactor: { color: null, style: 'ring', scale: 1, intensity: 1, spin: 1 },
+      })
+      s.setCaption('ARC LIGHTING // STOCK CYAN')
+    }
+    s.fireEffect('pulse')
+    sfx.play('done')
+  }
+
+  /** The supplied welcome line is 17.66 seconds. This sequence owns the
+   * interface until it ends, so a stray key cannot turn the arrival into a
+   * half-finished effect or start listening through the audio. */
+  const runWelcomeArrival = async () => {
+    introLocked.current = true
+    const cue = (delay: number, work: () => void) => {
+      welcomeTimers.current.push(window.setTimeout(work, delay))
+    }
+    const s = store.getState()
+    s.setCaption('WELCOME BACK // ARC REACTOR ARRIVAL SEQUENCE')
+    s.applyUi({ accent: '#57e9ff', background: '#020913', reactor: { color: '#57e9ff', style: 'wire', scale: 0.42, intensity: 0.24, spin: 0.12 } })
+    s.fireEffect('scan')
+    cue(1300, () => {
+      s.applyUi({ accent: '#b588ff', reactor: { color: '#b588ff', scale: 0.72, intensity: 0.85, spin: 1.3 } })
+      s.fireEffect('pulse')
+      sfx.play('tool')
+    })
+    cue(3500, () => {
+      s.applyUi({ accent: '#ffca6c', reactor: { color: '#ffca6c', style: 'sphere', scale: 1.14, intensity: 1.75, spin: 2.7 } })
+      s.fireEffect('flash')
+      sfx.play('wake')
+    })
+    cue(6200, () => {
+      s.applyUi({ accent: '#ff704d', reactor: { color: '#ff704d', style: 'wire', scale: 1.42, intensity: 2.35, spin: 4.1 } })
+      s.fireEffect('pulse')
+    })
+    cue(9250, () => {
+      s.applyUi({ accent: '#b9f4ff', background: '#020914', reactor: { color: '#b9f4ff', style: 'ring', scale: 1.24, intensity: 2.05, spin: 3.1 } })
+      s.fireEffect('winter')
+      sfx.play('tool')
+    })
+    cue(12_500, () => {
+      s.applyUi({ accent: '#63f6bd', reactor: { color: '#63f6bd', style: 'sphere', scale: 1.34, intensity: 2.55, spin: 4.45 } })
+      s.fireEffect('pulse')
+    })
+    cue(15_600, () => {
+      s.applyUi({ accent: '#57e9ff', reactor: { color: '#57e9ff', style: 'ring', scale: 1.08, intensity: 1.55, spin: 1.7 } })
+      s.fireEffect('flash')
+      sfx.play('done')
+    })
+
+    // The actual media is the authority; the floor protects the locked state
+    // if a WebView fails to report an `ended` event for a local asset.
+    await Promise.all([
+      music.playWelcome(),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 17_660)),
+    ])
+    welcomeTimers.current.forEach((timer) => clearTimeout(timer))
+    welcomeTimers.current = []
+    restorePreferredArcColour()
+    s.setCaption('')
+    introLocked.current = false
   }
 
   const goDormant = () => {
@@ -426,6 +534,7 @@ export default function App() {
   // -- one turn -------------------------------------------------------------
 
   const respond = async (said: string): Promise<void> => {
+    if (introLocked.current) return
     if (runSpokenMode(said)) {
       store.getState().pushTurn({ id: newId(), role: 'user', text: said })
       store.getState().pushTurn({ id: newId(), role: 'jarvis', text: 'Mode command accepted.' })
@@ -553,6 +662,7 @@ export default function App() {
   }
 
   const onWake = (trailing: string) => {
+    if (introLocked.current) return
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot') return
 
@@ -584,6 +694,7 @@ export default function App() {
    * immediately, whatever he was doing.
    */
   const onSpeechStart = () => {
+    if (introLocked.current) return
     clearIdle()
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
@@ -606,6 +717,7 @@ export default function App() {
   }
 
   const onUtterance = (text: string) => {
+    if (introLocked.current) return
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
 
@@ -669,11 +781,9 @@ export default function App() {
     // AudioContext or speech synthesis without a user gesture.
     await sfx.unlockAudio()
     sfx.play('boot')
-    // The score. Must be started from inside this click handler for the same
-    // reason as the rest of the audio.
+    // Preload the owner's arrival line while this user gesture has audio
+    // permission. It starts only after the boot film has fully resolved.
     music.enable()
-    music.playBoot()
-    music.startAmbient()
 
     s.setPhase('boot')
 
@@ -810,6 +920,12 @@ export default function App() {
     store.getState().setConnected(connectedLabels())
     store.getState().setVoice(currentVoiceName())
 
+    // Scene mounts only after the boot film; now it gets the entire welcome
+    // clip and no competing keyboard, command dock, voice loop, or animation.
+    store.getState().setPhase('dormant')
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await runWelcomeArrival()
+
     // The analyser is what makes the reactor pulse with your voice. It needs a
     // getUserMedia stream; speech recognition does not, and gets its own. So a
     // failure here costs the animation and nothing else — saying "voice input
@@ -891,6 +1007,10 @@ export default function App() {
     pump()
 
     const onKey = (e: KeyboardEvent) => {
+      if (introLocked.current) {
+        e.preventDefault()
+        return
+      }
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
 
@@ -916,6 +1036,12 @@ export default function App() {
         } else {
           store.getState().setError('Model switching needs the NVIDIA bridge online.')
         }
+        return
+      }
+
+      if (e.key === 'i' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        cycleArcLighting()
         return
       }
 
@@ -1028,6 +1154,8 @@ export default function App() {
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       if (arcPoll.current) clearInterval(arcPoll.current)
+      clearLightingMode()
+      welcomeTimers.current.forEach((timer) => clearTimeout(timer))
       showtimeTimers.current.forEach((timer) => clearTimeout(timer))
       store.getState().setArcControl(false)
       voice.current?.stop()

@@ -18,6 +18,16 @@ const WEB_APPS = new Map([
   ['google', 'https://www.google.com'],
   ['gmail', 'https://mail.google.com'],
 ])
+// Some speech engines deliver a wake phrase and its final app name as separate
+// chunks. A bare name is therefore safe only for this short, explicit list —
+// it cannot turn arbitrary dictation into an application launch.
+const SPOKEN_APPS = new Map([
+  ['finder', 'Finder'], ['safari', 'Safari'], ['google chrome', 'Google Chrome'],
+  ['chrome', 'Google Chrome'], ['notes', 'Notes'], ['calendar', 'Calendar'],
+  ['reminders', 'Reminders'], ['mail', 'Mail'], ['music', 'Music'],
+  ['spotify', 'Spotify'], ['discord', 'Discord'], ['visual studio code', 'Visual Studio Code'],
+  ['code', 'Visual Studio Code'], ['terminal', 'Terminal'], ['settings', 'System Settings'],
+])
 
 function clean(value, max = 180) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
@@ -72,6 +82,8 @@ function intentFor(text) {
   const command = said.replace(/^(?:(?:okay|ok|alright|sure|please|hey\s+jarvis)[,\s]+)+/i, '')
   const app = /^(open|launch|start|close|quit)\s+(?:the )?(?:app(?:lication)?\s+)?(.+?)[.!?]*$/i.exec(command)
   if (app) return { kind: app[1].match(/close|quit/i) ? 'quit-app' : 'open-app', app: appName(app[2]) }
+  const bareApp = SPOKEN_APPS.get(lower.replace(/[.!?]+$/, '').trim())
+  if (bareApp) return { kind: 'open-app', app: bareApp }
 
   const unread = /\b(?:show|tell|read|give|list)\b[\s\S]{0,55}?\b(\d{1,2})?\s*(?:most\s+)?recent\s+unread\s+(?:e-?mails?|messages?)\b/i.exec(said)
   if (unread) return { kind: 'unread-mail', count: Math.max(1, Math.min(10, Number(unread[1]) || 5)) }

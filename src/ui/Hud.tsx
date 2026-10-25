@@ -328,7 +328,7 @@ export function Hud({ onCommand }: { onCommand: (text: string) => void }) {
 
       <footer className="hud-bottom">
         <span className="hint">
-          say <b>“hey jarvis”</b> · <kbd>Space</kbd> to talk · <kbd>Shift</kbd>+<kbd>M</kbd> model · <kbd>K</kbd> Arc Control · <kbd>L</kbd> Showtime · <kbd>W</kbd> Winter Arc
+          say <b>“hey jarvis”</b> · <kbd>Space</kbd> to talk · <kbd>Shift</kbd>+<kbd>M</kbd> model · <kbd>I</kbd> RGB Arc · <kbd>K</kbd> Arc Control · <kbd>L</kbd> Showtime · <kbd>W</kbd> Winter Arc
           {voice && (
             <>
               {' · '}
