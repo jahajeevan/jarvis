@@ -56,6 +56,10 @@ const AWAIT_SPEECH_MS = 14000
  *  again to continue a thought. */
 const FOLLOW_UP_MS = 11000
 
+/** A deliberate breath between the boot film resolving and the reactor taking
+ * centre stage. It lets the first score finish instead of stepping on it. */
+const WELCOME_HANDOFF_MS = 3000
+
 /** crypto.randomUUID needs a secure context, which a LAN address over plain
  *  http is not. Not worth failing a whole turn over an id. */
 const newId = () =>
@@ -210,34 +214,50 @@ export default function App() {
     // The boot-film score belongs to the first sequence only. Cut it before
     // the owner-arrival voice takes the stage.
     music.stopAll()
-    s.setCaption('WELCOME BACK // ARC REACTOR ARRIVAL SEQUENCE')
-    s.applyUi({ accent: '#57e9ff', background: '#020913', reactor: { color: '#57e9ff', style: 'wire', scale: 0.42, intensity: 0.24, spin: 0.12 } })
-    s.fireEffect('scan')
-    cue(1300, () => {
-      s.applyUi({ accent: '#b588ff', reactor: { color: '#b588ff', scale: 0.72, intensity: 0.85, spin: 1.3 } })
-      s.fireEffect('pulse')
+    // One restrained, physical vocabulary: cold cyan, white-hot core, rings
+    // assembling out of darkness. This feels like an arc reactor being built,
+    // rather than a colour-preset slideshow.
+    s.setCaption('HOUSE PROTOCOL // REACTOR BAY OPEN')
+    s.applyUi({ accent: '#1a3640', background: '#010509', reactor: { color: '#57e9ff', style: 'wire', visible: false, scale: 0.16, intensity: 0, spin: 0.04 } })
+    s.fireEffect('glitch')
+    cue(650, () => {
+      s.setCaption('FIELD COILS // ALIGNING')
+      s.applyUi({ accent: '#57e9ff', reactor: { visible: true, style: 'wire', scale: 0.34, intensity: 0.22, spin: 0.55 } })
+      s.fireEffect('scan')
       sfx.play('tool')
     })
-    cue(3500, () => {
-      s.applyUi({ accent: '#ffca6c', reactor: { color: '#ffca6c', style: 'sphere', scale: 1.14, intensity: 1.75, spin: 2.7 } })
-      s.fireEffect('flash')
+    cue(2200, () => {
+      s.setCaption('CONTAINMENT RINGS // SEQUENCING')
+      s.applyUi({ reactor: { scale: 0.56, intensity: 0.56, spin: 2.4 } })
+      s.fireEffect('shake')
+      sfx.play('tool')
+    })
+    cue(4550, () => {
+      s.setCaption('PALLADIUM CORE // CHARGING')
+      s.applyUi({ accent: '#a9f7ff', reactor: { color: '#a9f7ff', style: 'sphere', scale: 0.72, intensity: 1.15, spin: 3.35 } })
+      s.fireEffect('pulse')
       sfx.play('wake')
     })
-    cue(6200, () => {
-      s.applyUi({ accent: '#ff704d', reactor: { color: '#ff704d', style: 'wire', scale: 1.42, intensity: 2.35, spin: 4.1 } })
-      s.fireEffect('pulse')
+    cue(7200, () => {
+      s.setCaption('MAGNETIC FIELD // HOLDING')
+      s.applyUi({ accent: '#57e9ff', reactor: { color: '#57e9ff', style: 'wire', scale: 0.92, intensity: 1.45, spin: 4.35 } })
+      s.fireEffect('scan')
     })
-    cue(9250, () => {
-      s.applyUi({ accent: '#b9f4ff', background: '#020914', reactor: { color: '#b9f4ff', style: 'ring', scale: 1.24, intensity: 2.05, spin: 3.1 } })
-      s.fireEffect('winter')
+    cue(10_150, () => {
+      s.setCaption('ARC CORE // CRITICAL MASS')
+      s.applyUi({ accent: '#e3fdff', reactor: { color: '#e3fdff', style: 'sphere', scale: 1.08, intensity: 2.5, spin: 4.8 } })
+      s.fireEffect('pulse')
+      sfx.play('wake')
+    })
+    cue(13_250, () => {
+      s.setCaption('PRIMARY REACTOR // STABILISING')
+      s.applyUi({ accent: '#7cefff', reactor: { color: '#7cefff', style: 'ring', scale: 1.22, intensity: 2.05, spin: 3.2 } })
+      s.fireEffect('shake')
       sfx.play('tool')
     })
-    cue(12_500, () => {
-      s.applyUi({ accent: '#63f6bd', reactor: { color: '#63f6bd', style: 'sphere', scale: 1.34, intensity: 2.55, spin: 4.45 } })
-      s.fireEffect('pulse')
-    })
-    cue(15_600, () => {
-      s.applyUi({ accent: '#57e9ff', reactor: { color: '#57e9ff', style: 'ring', scale: 1.08, intensity: 1.55, spin: 1.7 } })
+    cue(16_000, () => {
+      s.setCaption('ARC REACTOR // ONLINE')
+      s.applyUi({ accent: '#57e9ff', reactor: { color: '#57e9ff', style: 'ring', scale: 1.04, intensity: 1.55, spin: 1.45 } })
       s.fireEffect('flash')
       sfx.play('done')
     })
@@ -932,6 +952,8 @@ export default function App() {
     // clip and no competing keyboard, command dock, voice loop, or animation.
     store.getState().setPhase('dormant')
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    store.getState().setCaption('SYSTEM ONLINE // ARC REACTOR HANDOFF')
+    await new Promise<void>((resolve) => window.setTimeout(resolve, WELCOME_HANDOFF_MS))
     await runWelcomeArrival()
 
     // The analyser is what makes the reactor pulse with your voice. It needs a
