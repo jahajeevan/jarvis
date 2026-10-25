@@ -952,8 +952,21 @@ export default function App() {
     // clip and no competing keyboard, command dock, voice loop, or animation.
     store.getState().setPhase('dormant')
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    store.getState().setCaption('SYSTEM ONLINE // ARC REACTOR HANDOFF')
-    await new Promise<void>((resolve) => window.setTimeout(resolve, WELCOME_HANDOFF_MS))
+    // The silent handoff is itself a scene: 1.5 seconds of calm establishes
+    // scale, then the bay goes dark for another 1.5 before the arrival line
+    // lands. It reads as an intentional cut, not as the app waiting.
+    introLocked.current = true
+    store.getState().setCaption('SYSTEM ONLINE // REACTOR BAY STANDBY')
+    await new Promise<void>((resolve) => window.setTimeout(resolve, WELCOME_HANDOFF_MS / 2))
+    store.getState().applyUi({
+      accent: '#173841',
+      background: '#010509',
+      reactor: { color: '#57e9ff', style: 'wire', visible: false, scale: 0.12, intensity: 0, spin: 0.04 },
+    })
+    store.getState().setCaption('REACTOR BAY // SEALING')
+    store.getState().fireEffect('scan')
+    sfx.play('tool')
+    await new Promise<void>((resolve) => window.setTimeout(resolve, WELCOME_HANDOFF_MS / 2))
     await runWelcomeArrival()
 
     // The analyser is what makes the reactor pulse with your voice. It needs a
