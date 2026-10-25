@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Scene } from './scene/Scene'
 import { Hud } from './ui/Hud'
 import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
+import { Arrival, type ArrivalStage } from './ui/Arrival'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName } from './lib/tts'
@@ -58,7 +59,7 @@ const FOLLOW_UP_MS = 11000
 
 /** A deliberate breath between the boot film resolving and the reactor taking
  * centre stage. It lets the first score finish instead of stepping on it. */
-const WELCOME_HANDOFF_MS = 3000
+const WELCOME_HANDOFF_MS = 4000
 
 /** crypto.randomUUID needs a secure context, which a LAN address over plain
  *  http is not. Not worth failing a whole turn over an id. */
@@ -89,6 +90,7 @@ const ARC_COLOURS: Record<string, string> = {
 export default function App() {
   const store = useStore
   const phase = useStore((s) => s.phase)
+  const [arrivalStage, setArrivalStage] = useState<ArrivalStage>('idle')
   const history = useRef<Msg[]>([])
   const speaker = useRef<ReturnType<typeof createSpeaker> | null>(null)
   const voice = useRef<Voice | null>(null)
@@ -207,6 +209,7 @@ export default function App() {
    * half-finished effect or start listening through the audio. */
   const runWelcomeArrival = async () => {
     introLocked.current = true
+    setArrivalStage('arrival')
     const cue = (delay: number, work: () => void) => {
       welcomeTimers.current.push(window.setTimeout(work, delay))
     }
@@ -272,6 +275,7 @@ export default function App() {
     welcomeTimers.current = []
     restorePreferredArcColour()
     s.setCaption('')
+    setArrivalStage('idle')
     introLocked.current = false
   }
 
@@ -956,6 +960,7 @@ export default function App() {
     // scale, then the bay goes dark for another 1.5 before the arrival line
     // lands. It reads as an intentional cut, not as the app waiting.
     introLocked.current = true
+    setArrivalStage('handoff')
     store.getState().setCaption('SYSTEM ONLINE // REACTOR BAY STANDBY')
     await new Promise<void>((resolve) => window.setTimeout(resolve, WELCOME_HANDOFF_MS / 2))
     store.getState().applyUi({
@@ -1212,6 +1217,7 @@ export default function App() {
   return (
     <>
       {phase !== 'offline' && phase !== 'boot' && <Scene />}
+      <Arrival stage={arrivalStage} />
       <Hud onCommand={(command) => void respond(command)} />
       <Boot />
       <Diagnostics />

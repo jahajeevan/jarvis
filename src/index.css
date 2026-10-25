@@ -52,6 +52,30 @@ body::after {
   z-index: 1;
 }
 
+/* One presentation-grade aperture sequence, used only between boot and the
+   live arc. The reactor remains the hero; this gives it a physical bay. */
+.arrival { position:fixed; inset:0; z-index:3; pointer-events:none; overflow:hidden; color:#8ef7ff; }
+.arrival-vignette { position:absolute; inset:0; background:radial-gradient(circle at center,transparent 0 15%,rgba(1,5,9,.35) 40%,rgba(0,0,0,.92) 100%); animation:arrivalVignette 4s ease-in-out both; }
+.arrival-axis { position:absolute; opacity:.58; background:linear-gradient(90deg,transparent,#62efff 25%,rgba(210,254,255,.92) 50%,#62efff 75%,transparent); box-shadow:0 0 18px rgba(78,236,255,.7); }
+.arrival-axis-x { height:1px; left:5vw; right:5vw; top:50%; transform:scaleX(.16); animation:arrivalAxisX 3.7s cubic-bezier(.15,.8,.2,1) both; }
+.arrival-axis-y { width:1px; top:7vh; bottom:7vh; left:50%; transform:scaleY(.16); animation:arrivalAxisY 3.7s cubic-bezier(.15,.8,.2,1) both; }
+.arrival-aperture { position:absolute; left:50%; top:50%; width:min(64vmin,660px); aspect-ratio:1; transform:translate(-50%,-50%); }
+.arrival-halo { position:absolute; inset:0; border:1px solid rgba(99,240,255,.3); border-radius:50%; box-shadow:inset 0 0 30px rgba(76,229,255,.07),0 0 18px rgba(58,220,255,.16); }
+.arrival-halo-a { border-style:dashed; animation:arrivalSpinSmall 2.8s linear infinite; }
+.arrival-halo-b { border-color:rgba(202,253,255,.55); animation:arrivalSpinMid 5.1s linear infinite; }
+.arrival-halo-c { border-color:rgba(87,233,255,.18); animation:arrivalBreatheOuter 1.4s ease-in-out infinite; }
+.arrival-shutter { position:absolute; inset:12%; border-radius:50%; animation:arrivalSpin 13s linear infinite; }
+.arrival-shutter i { --a:calc(var(--segment) * 30deg); position:absolute; left:50%; top:50%; width:4px; height:30%; transform-origin:50% 100%; transform:translate(-50%,-100%) rotate(var(--a)); background:linear-gradient(0deg,transparent,rgba(197,253,255,.95) 62%,transparent); box-shadow:0 0 12px rgba(81,233,255,.85); opacity:.58; }
+.arrival-core { position:absolute; left:50%; top:50%; width:14%; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; border:1px solid #c8fbff; box-shadow:0 0 22px #76efff,inset 0 0 18px #dfffff; background:radial-gradient(circle,#fff 0 5%,#70ecff 18%,rgba(24,148,173,.38) 42%,transparent 70%); animation:arrivalCore 1.15s ease-in-out infinite; }
+.arrival-core span { position:absolute; inset:-42%; border:1px solid rgba(132,244,255,.45); border-radius:50%; animation:arrivalSpinReverse 1.7s linear infinite; }
+.arrival-readout { position:absolute; bottom:12vh; display:grid; gap:7px; font:10px/1.1 'JetBrains Mono',monospace; letter-spacing:.22em; color:rgba(143,247,255,.72); text-shadow:0 0 13px rgba(84,238,255,.8); }
+.arrival-readout b { color:#d9fdff; font-weight:500; }.arrival-readout-left { left:9vw; text-align:left; }.arrival-readout-right { right:9vw; text-align:right; }
+.arrival--handoff .arrival-aperture { animation:arrivalClose 2s cubic-bezier(.65,0,.3,1) both; }.arrival--handoff .arrival-core { opacity:.18; }
+.arrival--arrival .arrival-aperture { animation:arrivalOpen 1.2s cubic-bezier(.1,.75,.2,1) both; }.arrival--arrival .arrival-vignette { animation:arrivalReveal 1.4s ease-out both; }
+@keyframes arrivalSpin { to { transform:rotate(360deg) } } @keyframes arrivalSpinReverse { to { transform:rotate(-360deg) } } @keyframes arrivalSpinSmall { from { transform:scale(.54) rotate(0) } to { transform:scale(.54) rotate(360deg) } } @keyframes arrivalSpinMid { from { transform:scale(.74) rotate(0) } to { transform:scale(.74) rotate(-360deg) } } @keyframes arrivalBreatheOuter { 0%,100% { transform:scale(.94); opacity:.55 } 50% { transform:scale(.985); opacity:.9 } } @keyframes arrivalCore { 50% { transform:translate(-50%,-50%) scale(1.26); filter:brightness(1.5) } }
+@keyframes arrivalAxisX { 0% { transform:scaleX(.1); opacity:0 } 42% { transform:scaleX(1); opacity:.75 } 100% { transform:scaleX(.42); opacity:.25 } } @keyframes arrivalAxisY { 0% { transform:scaleY(.1); opacity:0 } 42% { transform:scaleY(1); opacity:.75 } 100% { transform:scaleY(.42); opacity:.25 } } @keyframes arrivalVignette { 0%,100% { opacity:1 } 52% { opacity:.62 } } @keyframes arrivalClose { 0% { transform:translate(-50%,-50%) scale(1.25); opacity:0 } 22% { opacity:1 } 100% { transform:translate(-50%,-50%) scale(.3); opacity:.95 } } @keyframes arrivalOpen { 0% { transform:translate(-50%,-50%) scale(.28); opacity:.95 } 70% { transform:translate(-50%,-50%) scale(1.08); opacity:1 } 100% { transform:translate(-50%,-50%) scale(1); opacity:.88 } } @keyframes arrivalReveal { from { opacity:1 } to { opacity:.32 } }
+@media (prefers-reduced-motion:reduce) { .arrival *,.arrival { animation:none !important; } }
+
 /* --------------------------------------------------------------------- HUD */
 
 .hud {
