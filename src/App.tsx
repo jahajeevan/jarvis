@@ -70,6 +70,18 @@ const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i
 /** A leading vocative on a real command: "Jarvis, what's the weather". */
 const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
 
+const ARC_COLOURS: Record<string, string> = {
+  cyan: '#57e9ff',
+  blue: '#529bff',
+  violet: '#b588ff',
+  purple: '#b588ff',
+  red: '#ff5d52',
+  orange: '#ff8d4d',
+  gold: '#ffc76d',
+  green: '#63f6bd',
+  white: '#dffcff',
+}
+
 export default function App() {
   const store = useStore
   const phase = useStore((s) => s.phase)
@@ -90,6 +102,8 @@ export default function App() {
   const arcBaseline = useRef<{ span: number; angle: number; y: number } | null>(null)
   const arcPulseReady = useRef(true)
   const arcResetSince = useRef<number | null>(null)
+  const arcControlAppearance = useRef<ReturnType<typeof snapshotArcAppearance> | null>(null)
+  const preferredArcColour = useRef<string | null>(null)
   // Explicitly a browser timer: WebKit returns a number while the Node types
   // used by the build describe a Timeout object.
   const arcPoll = useRef<number | null>(null)
@@ -108,6 +122,28 @@ export default function App() {
     speaker.current = null
   }
 
+  function snapshotArcAppearance() {
+    const ui = store.getState().ui
+    return { accent: ui.accent, reactor: { ...ui.reactor } }
+  }
+
+  const restorePreferredArcColour = () => {
+    const colour = preferredArcColour.current
+    store.getState().applyUi({ accent: colour, reactor: { color: colour } })
+  }
+
+  const setArcColour = (name: string) => {
+    const colour = ARC_COLOURS[name]
+    if (!colour) return false
+    preferredArcColour.current = colour
+    const s = store.getState()
+    s.applyUi({ accent: colour, reactor: { color: colour, intensity: 1.35, spin: 1.25 } })
+    s.fireEffect('pulse')
+    s.setCaption(`ARC CORE // ${name.toUpperCase()} SPECTRUM LOCKED`)
+    sfx.play('done')
+    return true
+  }
+
   const goDormant = () => {
     clearIdle()
     silence()
@@ -115,6 +151,7 @@ export default function App() {
     const s = store.getState()
     s.setCaption('')
     s.setActiveTool(null)
+    restorePreferredArcColour()
     music.working(false)
     music.duck(false)
     sfx.duck(false)
@@ -290,14 +327,27 @@ export default function App() {
       arcPulseReady.current = true
       hands.disableHands()
       hands.setPointerInteractionEnabled(true)
-      store.getState().setGestures(false)
-      store.getState().setArcControl(false)
-      store.getState().applyUi({ reactor: { scale: 1, intensity: 1, spin: 1 } })
-      store.getState().setError(null)
+      const s = store.getState()
+      s.setGestures(false)
+      s.setArcControl(false)
+      const appearance = arcControlAppearance.current
+      arcControlAppearance.current = null
+      if (appearance) s.applyUi(appearance)
+      else restorePreferredArcColour()
+      s.setCaption('ARC CONTROL STANDING BY')
+      s.setError(null)
       return
     }
 
-    store.getState().setError(null)
+    const before = snapshotArcAppearance()
+    arcControlAppearance.current = before
+    const s = store.getState()
+    s.setError(null)
+    s.applyUi({
+      accent: '#ff764d',
+      reactor: { color: '#ff764d', style: 'wire', scale: 0.92, intensity: 1.8, spin: 1.9 },
+    })
+    s.fireEffect('scan')
     hands.setPointerInteractionEnabled(false)
     void hands.enableHands().then(() => {
       arcControl.current = true
@@ -347,9 +397,13 @@ export default function App() {
       arcControl.current = false
       arcResetSince.current = null
       hands.setPointerInteractionEnabled(true)
-      store.getState().setGestures(false)
-      store.getState().setArcControl(false)
-      store.getState().setError(
+      const s = store.getState()
+      s.setGestures(false)
+      s.setArcControl(false)
+      const appearance = arcControlAppearance.current
+      arcControlAppearance.current = null
+      if (appearance) s.applyUi(appearance)
+      s.setError(
         err?.name === 'NotAllowedError'
           ? 'Camera permission is required for Arc Control. Enable JARVIS in System Settings, then try again.'
           : `Arc Control could not start: ${err?.message ?? err}`,
@@ -360,6 +414,9 @@ export default function App() {
   /** Fast scene commands never wait for the language model. */
   const runSpokenMode = (said: string) => {
     const command = said.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()
+    const colour = /\b(?:arc|reactor|core)(?:\s+colour|\s+color)?\s+(?:to\s+)?(cyan|blue|violet|purple|red|orange|gold|green|white)\b/.exec(command)
+      ?? /\b(?:make|set|change|turn)\s+(?:the\s+)?(?:arc|reactor|core)(?:\s+(?:colour|color))?\s+(?:to\s+)?(cyan|blue|violet|purple|red|orange|gold|green|white)\b/.exec(command)
+    if (colour && setArcColour(colour[1])) return true
     if (/\b(?:winter arc|winter mode)\b/.test(command)) { void runWinterArc(); return true }
     if (/\b(?:showtime|show time)\b/.test(command)) { void runShowtime(); return true }
     if (/\b(?:arc control|arc mode)\b/.test(command)) { toggleArcControl(); return true }
@@ -386,6 +443,10 @@ export default function App() {
     s.setCaption('')
     s.pushTurn({ id: newId(), role: 'user', text: said })
     s.setPhase('thinking')
+    // Thinking is deliberately visible: a violet, wire-framed core suggests
+    // computation without needing another line of UI text. It is restored to
+    // the owner's chosen spectrum as soon as the answer begins speaking.
+    s.applyUi({ accent: '#b588ff', reactor: { color: '#b588ff', style: 'wire', intensity: 1.45, spin: 2.8 } })
 
     const spk = createSpeaker()
     speaker.current = spk
@@ -403,6 +464,7 @@ export default function App() {
           if (!started) {
             started = true
             store.getState().setPhase('speaking')
+            restorePreferredArcColour()
             // The answer arriving is what ends the tool phase — a timer would
             // clear the readout while a slow tool was still running.
             store.getState().setActiveTool(null)
@@ -418,7 +480,10 @@ export default function App() {
           // Setting it unconditionally pinned the machine in 'tooling' for the
           // rest of any answer that called a tool after it started talking,
           // which also broke the reactor's lip-sync for the remainder.
-          if (!started) store.getState().setPhase('tooling')
+          if (!started) {
+            store.getState().setPhase('tooling')
+            store.getState().applyUi({ accent: '#ffab5b', reactor: { color: '#ffab5b', intensity: 1.7, spin: 3.3 } })
+          }
           store.getState().setActiveTool(name)
           sfx.play('tool')
           music.working(true)
@@ -461,6 +526,7 @@ export default function App() {
         music.duck(false)
         store.getState().setActiveTool(null)
         music.working(false)
+        restorePreferredArcColour()
         // Stay open. Having to say his name again to add one more sentence is
         // the difference between a conversation and a vending machine.
         listen(FOLLOW_UP_MS)
@@ -737,11 +803,9 @@ export default function App() {
       }, 200)
     }
 
-    // The original cinematic took 9.2 seconds before the assistant could be
-    // used. That makes a local assistant feel slower than a cloud one. Keep a
-    // short power-up reveal, then become useful while the optional visuals and
-    // voice assets finish warming in the background.
-    await new Promise((r) => setTimeout(r, 3200))
+    // The boot film is a complete sequence, not background decoration. The
+    // live arc appears only after its final reactor beat has resolved.
+    await new Promise((r) => setTimeout(r, 8800))
     await warming
     store.getState().setConnected(connectedLabels())
     store.getState().setVoice(currentVoiceName())
@@ -901,85 +965,7 @@ export default function App() {
 
       if (e.key === 'k' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
-        if (arcControl.current) {
-          arcControl.current = false
-          arcBaseline.current = null
-          if (arcPoll.current) clearInterval(arcPoll.current)
-          arcPoll.current = null
-          arcResetSince.current = null
-          arcPulseReady.current = true
-          hands.disableHands()
-          hands.setPointerInteractionEnabled(true)
-          store.getState().setGestures(false)
-          store.getState().setArcControl(false)
-          store.getState().applyUi({ reactor: { scale: 1, intensity: 1, spin: 1 } })
-          store.getState().setError(null)
-          return
-        }
-        store.getState().setError(null)
-        hands.setPointerInteractionEnabled(false)
-        void hands.enableHands().then(() => {
-          arcControl.current = true
-          arcBaseline.current = null
-          arcResetSince.current = null
-          arcPulseReady.current = true
-          store.getState().setGestures(true)
-          store.getState().setArcControl(true)
-          store.getState().setCaption('ARC CONTROL ACTIVE — HOLD BOTH HANDS IN VIEW TO CALIBRATE.')
-          arcPoll.current = window.setInterval(() => {
-            const control = hands.twoPalmControl()
-            const pinches = hands.pinchCount()
-            if (pinches >= 2) {
-              if (!arcResetSince.current) arcResetSince.current = Date.now()
-              if (Date.now() - arcResetSince.current > 500) {
-                arcBaseline.current = null
-                arcResetSince.current = null
-                store.getState().setCaption('ARC CONTROL RESET — HOLD BOTH HANDS STILL.')
-                sfx.play('listen')
-              }
-              return
-            }
-            arcResetSince.current = null
-            if (pinches === 1 && arcPulseReady.current) {
-              arcPulseReady.current = false
-              store.getState().fireEffect('pulse')
-              store.getState().applyUi({ reactor: { intensity: 2.9, spin: 4.5 } })
-              store.getState().setCaption('ARC PULSE DISCHARGED')
-              sfx.play('done')
-              window.setTimeout(() => { arcPulseReady.current = true }, 850)
-            }
-            if (!control) return
-            if (!arcBaseline.current) {
-              arcBaseline.current = control
-              store.getState().setCaption('ARC CONTROL CALIBRATED — SPREAD, LIFT, OR TILT BOTH HANDS.')
-              sfx.play('listen')
-              return
-            }
-            const baseline = arcBaseline.current
-            const scale = Math.max(0.55, Math.min(2.35, control.span / baseline.span))
-            const turn = Math.abs(control.angle - baseline.angle)
-            const wrappedTurn = Math.min(turn, Math.PI * 2 - turn)
-            const energy = Math.max(0.45, Math.min(2.75, 1.1 + (baseline.y - control.y) / 220))
-            store.getState().applyUi({
-              reactor: {
-                scale,
-                intensity: energy,
-                spin: Math.max(0.7, Math.min(4.5, 1 + wrappedTurn * 1.4)),
-              },
-            })
-          }, 90)
-        }).catch((err: Error) => {
-          arcControl.current = false
-          arcResetSince.current = null
-          hands.setPointerInteractionEnabled(true)
-          store.getState().setGestures(false)
-          store.getState().setArcControl(false)
-          store.getState().setError(
-            err?.name === 'NotAllowedError'
-              ? 'Camera permission is required for Arc Control. Enable JARVIS in System Settings, then press K again.'
-              : `Arc Control could not start: ${err?.message ?? err}`,
-          )
-        })
+        toggleArcControl()
         return
       }
 
@@ -1054,7 +1040,7 @@ export default function App() {
 
   return (
     <>
-      <Scene />
+      {phase !== 'offline' && phase !== 'boot' && <Scene />}
       <Hud onCommand={(command) => void respond(command)} />
       <Boot />
       <Diagnostics />

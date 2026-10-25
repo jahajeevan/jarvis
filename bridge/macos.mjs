@@ -13,6 +13,11 @@ import { promisify } from 'node:util'
 
 const execFile = promisify(execFileCallback)
 const enabled = () => process.platform === 'darwin' && process.env.JARVIS_ALLOW_MACOS_ACTIONS === '1'
+const WEB_APPS = new Map([
+  ['youtube', 'https://www.youtube.com'],
+  ['google', 'https://www.google.com'],
+  ['gmail', 'https://mail.google.com'],
+])
 
 function clean(value, max = 180) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
@@ -61,7 +66,11 @@ function dateArgs(date, durationMinutes = 60) {
 function intentFor(text) {
   const said = clean(text)
   const lower = said.toLowerCase()
-  const app = /^(?:please )?(open|launch|start|close|quit)\s+(?:the )?(?:app(?:lication)?\s+)?(.+?)[.!?]*$/i.exec(said)
+  // Voice transcription commonly prefixes a command with a conversational
+  // acknowledgement ("okay, open YouTube"). Treat that as the same command
+  // while keeping the actual executable name on the fixed grammar below.
+  const command = said.replace(/^(?:(?:okay|ok|alright|sure|please|hey\s+jarvis)[,\s]+)+/i, '')
+  const app = /^(open|launch|start|close|quit)\s+(?:the )?(?:app(?:lication)?\s+)?(.+?)[.!?]*$/i.exec(command)
   if (app) return { kind: app[1].match(/close|quit/i) ? 'quit-app' : 'open-app', app: appName(app[2]) }
 
   const unread = /\b(?:show|tell|read|give|list)\b[\s\S]{0,55}?\b(\d{1,2})?\s*(?:most\s+)?recent\s+unread\s+(?:e-?mails?|messages?)\b/i.exec(said)
@@ -84,6 +93,11 @@ function intentFor(text) {
 
 async function openApp(name) {
   if (!name) throw new Error('Please say the application name.')
+  const web = WEB_APPS.get(name.toLowerCase())
+  if (web) {
+    await execFile('/usr/bin/open', [web], { timeout: 10_000 })
+    return `Opening ${name}.`
+  }
   await execFile('/usr/bin/open', ['-a', name], { timeout: 10_000 })
   return `Opening ${name}.`
 }

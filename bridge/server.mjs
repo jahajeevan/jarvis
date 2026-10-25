@@ -129,6 +129,7 @@ const NVIDIA_MODELS = [
   { id: 'nvidia/nemotron-3.5-bolt-e4b', label: 'NVIDIA Bolt · fast' },
   { id: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Lightning · deep' },
 ]
+const QWEN_PROFILE = { id: OLLAMA_MODEL, label: `Qwen local · ${OLLAMA_MODEL}` }
 const execFile = promisify(execFileCallback)
 
 /**
@@ -402,8 +403,8 @@ async function localSystemStatus() {
   const memories = await loadMemory()
   return {
     ok: true,
-    brain: BRAIN === 'nvidia' ? NVIDIA_MODELS[0].label : `Qwen · ${OLLAMA_MODEL}`,
-    brainOnline,
+    brain: BRAIN === 'nvidia' ? NVIDIA_MODELS[0].label : QWEN_PROFILE.label,
+    brainOnline: BRAIN === 'nvidia' ? Boolean(NVIDIA_API_KEY.trim()) : brainOnline,
     speech: LOCAL_STT ? 'local Whisper' : 'unavailable',
     memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
     memories: memories.length,
@@ -1366,13 +1367,20 @@ wss.on('connection', (socket) => {
 
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.
+  const initialProfile = BRAIN === 'nvidia' ? NVIDIA_MODELS[0] : QWEN_PROFILE
+  const serversFor = (profile) => [
+    profile.label,
+    'Web research',
+    'Private memory',
+    ...(macosActionsAvailable() ? ['macOS actions'] : []),
+  ]
   socket.send(JSON.stringify({
     type: 'ready',
     // Do not advertise the cloud-agent MCP surface to local or NIM models.
     servers: BRAIN === 'ollama'
       ? ['Ollama (local)', 'Web research', 'Private memory', ...(macosActionsAvailable() ? ['macOS actions'] : [])]
       : BRAIN === 'nvidia'
-        ? [NVIDIA_MODELS[0].label, 'Web research', 'Private memory', ...(macosActionsAvailable() ? ['macOS actions'] : [])]
+        ? serversFor(initialProfile)
         : Object.keys(MCP_SERVERS),
   }))
 
@@ -1383,7 +1391,7 @@ wss.on('connection', (socket) => {
   if (BRAIN === 'ollama' || BRAIN === 'nvidia') {
     const history = []
     let active = null
-    let nvidiaModel = NVIDIA_MODELS[0]
+    let profile = initialProfile
 
     socket.on('message', (raw) => {
       let msg
@@ -1400,17 +1408,21 @@ wss.on('connection', (socket) => {
       }
       if (msg.type === 'toggle_model') {
         if (BRAIN !== 'nvidia') {
-          send({ type: 'error', message: 'Model switching is available when JARVIS_BRAIN=nvidia.' })
+          send({ type: 'error', message: 'Model switching starts in NVIDIA mode. Set JARVIS_BRAIN=nvidia, then relaunch.' })
           return
         }
         active?.abort()
         active = null
-        nvidiaModel = nvidiaModel === NVIDIA_MODELS[0] ? NVIDIA_MODELS[1] : NVIDIA_MODELS[0]
+        profile = profile === NVIDIA_MODELS[0]
+          ? NVIDIA_MODELS[1]
+          : profile === NVIDIA_MODELS[1]
+            ? QWEN_PROFILE
+            : NVIDIA_MODELS[0]
         // The client already understands ready/servers, so this instantly
         // refreshes the SYSTEMS rail without adding a second protocol.
         send({
           type: 'ready',
-          servers: [nvidiaModel.label, 'Web research', 'Private memory', ...(macosActionsAvailable() ? ['macOS actions'] : [])],
+          servers: serversFor(profile),
         })
         return
       }
@@ -1465,9 +1477,9 @@ wss.on('connection', (socket) => {
               if (active === controller) send({ type: 'text', ask, delta })
             },
           }
-          return BRAIN === 'nvidia'
-            ? runNvidiaTurn({ ...turn, model: nvidiaModel })
-            : runOllamaTurn(turn)
+          return profile === QWEN_PROFILE
+            ? runOllamaTurn(turn)
+            : runNvidiaTurn({ ...turn, model: profile })
         }),
         deadline,
       ])
