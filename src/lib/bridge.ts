@@ -490,6 +490,17 @@ export function cancel(): void {
   pending?.finish()
 }
 
+/**
+ * Switch NVIDIA NIM between its low-latency Bolt profile and the stronger
+ * Lightning profile. The bridge owns the actual choice (and the API key), so
+ * this browser message contains no credential or provider configuration.
+ */
+export function toggleModel(): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'toggle_model' }))
+  return true
+}
+
 /** The older name for `cancel()`. */
 export function interrupt(): void {
   cancel()

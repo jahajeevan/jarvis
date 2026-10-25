@@ -29,6 +29,7 @@ import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { promisify } from 'node:util'
 import { fetchText, openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
+import { isMacIntent, macosActionsAvailable, runMacIntent } from './macos.mjs'
 
 const PORT = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
 
@@ -111,6 +112,23 @@ const BRAIN = process.env.JARVIS_BRAIN ?? 'ollama'
 const OLLAMA_URL = (process.env.JARVIS_OLLAMA_URL ?? 'http://127.0.0.1:11434')
   .replace(/\/+$/, '')
 const OLLAMA_MODEL = process.env.JARVIS_OLLAMA_MODEL ?? 'qwen3:8b'
+
+/**
+ * NVIDIA's hosted NIM endpoint is OpenAI-chat compatible. Keep its credential
+ * here in the bridge, never in a VITE_ variable: Vite would otherwise ship it
+ * to every browser that opens JARVIS.
+ *
+ * Bolt is the low-latency conversational default. Lightning is the deliberate
+ * second gear: it is a larger MoE agent model, so Shift+M can trade a little
+ * pace for better tool use and planning without a restart.
+ */
+const NVIDIA_URL = (process.env.JARVIS_NVIDIA_URL ?? 'https://integrate.api.nvidia.com/v1')
+  .replace(/\/+$/, '')
+const NVIDIA_API_KEY = process.env.JARVIS_NVIDIA_API_KEY ?? process.env.NVIDIA_API_KEY ?? ''
+const NVIDIA_MODELS = [
+  { id: 'nvidia/nemotron-3.5-bolt-e4b', label: 'NVIDIA Bolt · fast' },
+  { id: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Lightning · deep' },
+]
 const execFile = promisify(execFileCallback)
 
 /**
@@ -163,7 +181,7 @@ async function transcribeWithWhisper(audio, contentType) {
 
 const LOCAL_SYSTEM_PROMPT = `You are JARVIS, a private assistant running entirely on this Mac.
 Answer aloud in one or two concise sentences. Use calm British service language and use “sir” sparingly.
-When CURRENT WEB RESEARCH is supplied, use it for timely facts and say “according to” the named source when it matters. Never invent a source or claim a live lookup without supplied research. Local computer actions are not enabled yet; state that limitation plainly when asked. Do not use markdown, lists, URLs, or emoji.`
+When CURRENT WEB RESEARCH is supplied, use it for timely facts and say “according to” the named source when it matters. Never invent a source or claim a live lookup without supplied research. Native macOS actions, when enabled, are handled directly by the local bridge rather than by you. Do not use markdown, lists, URLs, or emoji.`
 
 // Memory is deliberately plain, inspectable JSON in the user's Application
 // Support folder — not a hidden cloud profile. Only explicit preferences and
@@ -309,6 +327,68 @@ async function runOllamaTurn({ messages, prompt, signal, onDelta }) {
   return text.trim()
 }
 
+/** Stream an OpenAI-compatible SSE chat completion from NVIDIA NIM. */
+async function runNvidiaTurn({ model, messages, prompt, signal, onDelta }) {
+  if (!NVIDIA_API_KEY.trim()) {
+    throw new Error('NVIDIA API key is missing. Set JARVIS_NVIDIA_API_KEY before starting JARVIS.')
+  }
+  const response = await fetch(`${NVIDIA_URL}/chat/completions`, {
+    method: 'POST',
+    signal,
+    headers: {
+      authorization: `Bearer ${NVIDIA_API_KEY}`,
+      accept: 'text/event-stream',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: model.id,
+      stream: true,
+      temperature: 0.45,
+      top_p: 0.95,
+      max_tokens: 512,
+      // A spoken assistant should answer, not narrate its private scratchwork.
+      chat_template_kwargs: { enable_thinking: false },
+      messages: [
+        { role: 'system', content: LOCAL_SYSTEM_PROMPT },
+        ...messages,
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  if (!response.ok || !response.body) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`NVIDIA NIM is unavailable (${response.status}). ${detail}`.trim())
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let text = ''
+  const consume = (line) => {
+    if (!line.startsWith('data:')) return false
+    const data = line.slice(5).trim()
+    if (data === '[DONE]') return true
+    try {
+      const delta = JSON.parse(data)?.choices?.[0]?.delta?.content
+      if (typeof delta === 'string' && delta) {
+        text += delta
+        onDelta(delta)
+      }
+    } catch {
+      // An incomplete or vendor-specific SSE frame should not end a turn.
+    }
+    return false
+  }
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    if (lines.some(consume) || done) break
+  }
+  return text.trim()
+}
+
 async function localSystemStatus() {
   let brainOnline = false
   try {
@@ -322,7 +402,7 @@ async function localSystemStatus() {
   const memories = await loadMemory()
   return {
     ok: true,
-    brain: `Qwen · ${OLLAMA_MODEL}`,
+    brain: BRAIN === 'nvidia' ? NVIDIA_MODELS[0].label : `Qwen · ${OLLAMA_MODEL}`,
     brainOnline,
     speech: LOCAL_STT ? 'local Whisper' : 'unavailable',
     memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
@@ -1243,6 +1323,8 @@ console.log(
 console.log(
   BRAIN === 'ollama'
     ? `[jarvis] local brain ${OLLAMA_MODEL} via ${OLLAMA_URL}`
+    : BRAIN === 'nvidia'
+      ? `[jarvis] NVIDIA NIM ${NVIDIA_MODELS[0].id} · Shift+M toggles Bolt / Lightning`
     : `[jarvis] cloud model ${MODEL} · effort ${EFFORT}`,
 )
 console.log(
@@ -1286,17 +1368,22 @@ wss.on('connection', (socket) => {
   // first turn. Refined later by the real init message.
   socket.send(JSON.stringify({
     type: 'ready',
-    // Do not advertise the cloud-agent MCP surface to a local model.
-    servers: BRAIN === 'ollama' ? ['Ollama (local)', 'Web research', 'Private memory'] : Object.keys(MCP_SERVERS),
+    // Do not advertise the cloud-agent MCP surface to local or NIM models.
+    servers: BRAIN === 'ollama'
+      ? ['Ollama (local)', 'Web research', 'Private memory', ...(macosActionsAvailable() ? ['macOS actions'] : [])]
+      : BRAIN === 'nvidia'
+        ? [NVIDIA_MODELS[0].label, 'Web research', 'Private memory', ...(macosActionsAvailable() ? ['macOS actions'] : [])]
+        : Object.keys(MCP_SERVERS),
   }))
 
   const send = (msg) => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg))
   }
 
-  if (BRAIN === 'ollama') {
+  if (BRAIN === 'ollama' || BRAIN === 'nvidia') {
     const history = []
     let active = null
+    let nvidiaModel = NVIDIA_MODELS[0]
 
     socket.on('message', (raw) => {
       let msg
@@ -1311,7 +1398,40 @@ wss.on('connection', (socket) => {
         active = null
         return
       }
+      if (msg.type === 'toggle_model') {
+        if (BRAIN !== 'nvidia') {
+          send({ type: 'error', message: 'Model switching is available when JARVIS_BRAIN=nvidia.' })
+          return
+        }
+        active?.abort()
+        active = null
+        nvidiaModel = nvidiaModel === NVIDIA_MODELS[0] ? NVIDIA_MODELS[1] : NVIDIA_MODELS[0]
+        // The client already understands ready/servers, so this instantly
+        // refreshes the SYSTEMS rail without adding a second protocol.
+        send({
+          type: 'ready',
+          servers: [nvidiaModel.label, 'Web research', 'Private memory', ...(macosActionsAvailable() ? ['macOS actions'] : [])],
+        })
+        return
+      }
       if (msg.type !== 'ask' || typeof msg.text !== 'string') return
+
+      // Commands that affect this Mac never pass through the language model.
+      // The matcher accepts a deliberately small grammar and the executor uses
+      // fixed AppleScript / open arguments, never a user-built shell string.
+      if (isMacIntent(msg.text)) {
+        const ask = typeof msg.id === 'string' ? msg.id : null
+        send({ type: 'tool', ask, name: 'macOS action' })
+        void runMacIntent(msg.text)
+          .then((text) => {
+            const reply = text ?? 'I could not understand that macOS action.'
+            history.push({ role: 'user', content: msg.text }, { role: 'assistant', content: reply })
+            if (history.length > 16) history.splice(0, history.length - 16)
+            send({ type: 'done', ask, text: reply })
+          })
+          .catch((err) => send({ type: 'error', ask, message: String(err?.message ?? err) }))
+        return
+      }
 
       active?.abort()
       const controller = new AbortController()
@@ -1337,14 +1457,17 @@ wss.on('connection', (socket) => {
           }
           if (research.length) send({ type: 'tool', ask, name: 'live web research' })
           if (remembered) send({ type: 'tool', ask, name: 'private memory' })
-          return runOllamaTurn({
+          const turn = {
             messages: history,
             prompt: enrichPrompt(msg.text, relevantMemory(allMemory, msg.text), research),
             signal: controller.signal,
             onDelta: (delta) => {
               if (active === controller) send({ type: 'text', ask, delta })
             },
-          })
+          }
+          return BRAIN === 'nvidia'
+            ? runNvidiaTurn({ ...turn, model: nvidiaModel })
+            : runOllamaTurn(turn)
         }),
         deadline,
       ])

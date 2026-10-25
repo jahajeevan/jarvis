@@ -19,6 +19,7 @@ import {
   ask,
   warm,
   interrupt,
+  toggleModel,
   watchServers,
   watchPanels,
   watchBlades,
@@ -278,9 +279,101 @@ export default function App() {
     idleTimer.current = setTimeout(goDormant, window)
   }
 
+  /** One Arc Control switch shared by the keyboard and voice commands. */
+  const toggleArcControl = () => {
+    if (arcControl.current) {
+      arcControl.current = false
+      arcBaseline.current = null
+      if (arcPoll.current) clearInterval(arcPoll.current)
+      arcPoll.current = null
+      arcResetSince.current = null
+      arcPulseReady.current = true
+      hands.disableHands()
+      hands.setPointerInteractionEnabled(true)
+      store.getState().setGestures(false)
+      store.getState().setArcControl(false)
+      store.getState().applyUi({ reactor: { scale: 1, intensity: 1, spin: 1 } })
+      store.getState().setError(null)
+      return
+    }
+
+    store.getState().setError(null)
+    hands.setPointerInteractionEnabled(false)
+    void hands.enableHands().then(() => {
+      arcControl.current = true
+      arcBaseline.current = null
+      arcResetSince.current = null
+      arcPulseReady.current = true
+      store.getState().setGestures(true)
+      store.getState().setArcControl(true)
+      store.getState().setCaption('ARC CONTROL ACTIVE — HOLD BOTH HANDS IN VIEW TO CALIBRATE.')
+      arcPoll.current = window.setInterval(() => {
+        const control = hands.twoPalmControl()
+        const pinches = hands.pinchCount()
+        if (pinches >= 2) {
+          if (!arcResetSince.current) arcResetSince.current = Date.now()
+          if (Date.now() - arcResetSince.current > 500) {
+            arcBaseline.current = null
+            arcResetSince.current = null
+            store.getState().setCaption('ARC CONTROL RESET — HOLD BOTH HANDS STILL.')
+            sfx.play('listen')
+          }
+          return
+        }
+        arcResetSince.current = null
+        if (pinches === 1 && arcPulseReady.current) {
+          arcPulseReady.current = false
+          store.getState().fireEffect('pulse')
+          store.getState().applyUi({ reactor: { intensity: 2.9, spin: 4.5 } })
+          store.getState().setCaption('ARC PULSE DISCHARGED')
+          sfx.play('done')
+          window.setTimeout(() => { arcPulseReady.current = true }, 850)
+        }
+        if (!control) return
+        if (!arcBaseline.current) {
+          arcBaseline.current = control
+          store.getState().setCaption('ARC CONTROL CALIBRATED — SPREAD, LIFT, OR TILT BOTH HANDS.')
+          sfx.play('listen')
+          return
+        }
+        const baseline = arcBaseline.current
+        const scale = Math.max(0.55, Math.min(2.35, control.span / baseline.span))
+        const turn = Math.abs(control.angle - baseline.angle)
+        const wrappedTurn = Math.min(turn, Math.PI * 2 - turn)
+        const energy = Math.max(0.45, Math.min(2.75, 1.1 + (baseline.y - control.y) / 220))
+        store.getState().applyUi({ reactor: { scale, intensity: energy, spin: Math.max(0.7, Math.min(4.5, 1 + wrappedTurn * 1.4)) } })
+      }, 90)
+    }).catch((err: Error) => {
+      arcControl.current = false
+      arcResetSince.current = null
+      hands.setPointerInteractionEnabled(true)
+      store.getState().setGestures(false)
+      store.getState().setArcControl(false)
+      store.getState().setError(
+        err?.name === 'NotAllowedError'
+          ? 'Camera permission is required for Arc Control. Enable JARVIS in System Settings, then try again.'
+          : `Arc Control could not start: ${err?.message ?? err}`,
+      )
+    })
+  }
+
+  /** Fast scene commands never wait for the language model. */
+  const runSpokenMode = (said: string) => {
+    const command = said.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()
+    if (/\b(?:winter arc|winter mode)\b/.test(command)) { void runWinterArc(); return true }
+    if (/\b(?:showtime|show time)\b/.test(command)) { void runShowtime(); return true }
+    if (/\b(?:arc control|arc mode)\b/.test(command)) { toggleArcControl(); return true }
+    return false
+  }
+
   // -- one turn -------------------------------------------------------------
 
   const respond = async (said: string): Promise<void> => {
+    if (runSpokenMode(said)) {
+      store.getState().pushTurn({ id: newId(), role: 'user', text: said })
+      store.getState().pushTurn({ id: newId(), role: 'jarvis', text: 'Mode command accepted.' })
+      return
+    }
     const mine = ++turn.current
     const stale = () => mine !== turn.current
 
@@ -736,6 +829,31 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+      // Shift+M is the deliberate two-gear control: Bolt for instant voice
+      // replies, Lightning when the next task needs more agentic horsepower.
+      // The bridge holds both the API key and the selected model, so no secret
+      // ever reaches this event handler or the browser bundle.
+      if (
+        e.code === 'KeyM' &&
+        e.shiftKey &&
+        !e.repeat &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault()
+        silence()
+        interrupt()
+        if (toggleModel()) {
+          store.getState().setCaption('MODEL SWITCHED — NVIDIA PROFILE UPDATED.')
+          store.getState().setError(null)
+          sfx.play('done')
+        } else {
+          store.getState().setError('Model switching needs the NVIDIA bridge online.')
+        }
+        return
+      }
 
       // V auditions the next British voice installed on this machine. Which
       // ones exist varies per Mac, so hearing them beats trusting a ranking.

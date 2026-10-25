@@ -15,6 +15,9 @@ JARVIS combines a reactive holographic interface with a local Qwen model, offlin
 - Offer a cinematic normal Showtime and a Winter Arc presentation mode
 - Drive a real-time 3D Arc interface with keyboard and camera gesture input
 - Package as a native macOS `.app` and distributable DMG
+- Open or quit named macOS apps with a spoken command
+- Read or create Calendar events and Reminders through native macOS permission prompts
+- Create a styled Mail brief from recent unread messages directly in Downloads
 - Keep effectful computer actions opt-in; read-only is the default
 
 ## Architecture
@@ -84,6 +87,23 @@ The app is created at `build/JARVIS.app`; the installer is placed in `build/`. T
 | `T` | Open the typed command deck |
 | `Esc` | Close panels / leave an active mode |
 
+### Spoken controls
+
+After the one-time initialisation click (required by macOS/web audio permission
+rules), say **“Hey Jarvis”** followed by a request. These spoken controls act
+instantly without waiting for the model:
+
+- “Hey Jarvis, showtime mode”
+- “Hey Jarvis, winter arc mode”
+- “Hey Jarvis, arc control mode”
+- “Hey Jarvis, open Notes” / “close Notes”
+- “Hey Jarvis, show my calendar” / “remind me to call Mum tomorrow at 6 pm”
+- “Hey Jarvis, tell me the five recent unread emails”
+
+The Mail command writes a beautifully styled `.doc` brief to `~/Downloads`;
+it does not upload mail content. Calendar, Reminders, and Mail permissions are
+requested by macOS when needed.
+
 ### Arc Control
 
 1. Show two open hands to calibrate.
@@ -111,6 +131,16 @@ cp .env.example .env.local
 ```
 
 Useful settings include `JARVIS_BRAIN=ollama`, `JARVIS_OLLAMA_MODEL=qwen3:8b`, and `JARVIS_ALLOW_WRITES=1`. The last option authorizes potentially effectful actions; leave it unset for the safe default.
+
+### NVIDIA fast cloud brain
+
+To use an NVIDIA API key without exposing it to the browser, run the local bridge in NVIDIA mode:
+
+```bash
+JARVIS_BRAIN=nvidia JARVIS_NVIDIA_API_KEY=nvapi-your-key npm start
+```
+
+It starts with **Nemotron 3.5 Bolt E4B**, the low-latency voice/chat profile. Press **Shift+M** in JARVIS to toggle to **Nemotron 3.5 Lightning 30B-A3B** for harder agent tasks; press it again to return to Bolt. The active profile is shown in the SYSTEMS rail.
 
 ## Development
 

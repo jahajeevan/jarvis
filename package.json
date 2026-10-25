@@ -9,13 +9,14 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node scripts/start.mjs",
+    "start": "node --env-file-if-exists=.env.local scripts/start.mjs",
+    "start:macos-actions": "node --env-file-if-exists=.env.local scripts/start.mjs --macos-actions",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "bridge": "node bridge/server.mjs",
-    "bridge:writes": "JARVIS_ALLOW_WRITES=1 node bridge/server.mjs",
+    "bridge": "node --env-file-if-exists=.env.local bridge/server.mjs",
+    "bridge:writes": "JARVIS_ALLOW_WRITES=1 node --env-file-if-exists=.env.local bridge/server.mjs",
     "setup": "node scripts/setup.mjs",
     "macos:build": "bash scripts/build-macos-app.sh",
     "macos:dmg": "bash scripts/package-dmg.sh"

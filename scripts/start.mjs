@@ -45,6 +45,7 @@ function vendorWasm() {
 }
 
 const writes = process.argv.includes('--writes')
+const macosActions = process.argv.includes('--macos-actions')
 
 // A dim label per process, so the interleaved logs stay readable.
 const paint = (tag, colour) => (line) =>
@@ -106,6 +107,7 @@ process.on('SIGTERM', () => shutdown(0))
  */
 const port = process.env.JARVIS_FACE_PORT ?? process.env.PORT ?? '5173'
 const bridgeEnv = writes ? { JARVIS_ALLOW_WRITES: '1' } : {}
+if (macosActions) bridgeEnv.JARVIS_ALLOW_MACOS_ACTIONS = '1'
 bridgeEnv.JARVIS_ALLOWED_ORIGINS = `http://localhost:${port},http://127.0.0.1:${port}`
 console.log(`  serving the face on port ${port}; the bridge will accept it.\n`)
 

@@ -100,6 +100,12 @@ export function interrupt(): void {
   cancel()
 }
 
+/** Toggle the bridge's NVIDIA Fast/Deep model profile, when that bridge is in
+ * NVIDIA mode. Direct API mode intentionally has no server-side model switch. */
+export function toggleModel(): boolean {
+  return usingBridge ? bridge.toggleModel() : false
+}
+
 /**
  * Whether the brain is reachable right now.
  *

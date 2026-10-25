@@ -15,6 +15,8 @@ type SystemStatus = {
 const QUICK_COMMANDS = [
   { label: 'Status report', text: 'Give me a concise system status report.' },
   { label: 'Today', text: 'Help me plan the rest of today.' },
+  { label: 'Showtime', text: 'Activate showtime mode.' },
+  { label: 'My calendar', text: 'Show my calendar for today.' },
   { label: 'Capabilities', text: 'What can you help me with right now on this Mac?' },
 ]
 
@@ -90,7 +92,7 @@ export function CommandDeck({ onCommand }: { onCommand: (text: string) => void }
               ref={input}
               value={text}
               onChange={(event) => setText(event.target.value)}
-              placeholder="Ask JARVIS anything…"
+              placeholder="Try “open Notes” or “read my reminders”…"
               autoComplete="off"
             />
             <button type="submit">Send</button>
@@ -110,7 +112,7 @@ export function CommandDeck({ onCommand }: { onCommand: (text: string) => void }
             <span>{status ? `${status.memories} saved memories` : 'local-only link'}</span>
             <span>{status ? `${status.memoryMB} MB bridge memory` : ''}</span>
           </div>
-          <p className="privacy-note">Say “remember that…” to save a preference locally. Voice and prompts stay on this Mac.</p>
+          <p className="privacy-note">Try “open Notes”, “winter arc mode”, or “five unread emails”. Calendar, Reminders, Mail, and Downloads remain local to this Mac.</p>
         </div>
       ) : (
         <button className="command-launch" type="button" onClick={() => setOpen(true)}>

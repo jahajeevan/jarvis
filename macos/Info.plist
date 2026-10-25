@@ -26,5 +26,9 @@
   <string>JARVIS uses the camera only when you activate Arc Control with K, so it can track your two-palm gestures locally on this Mac.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>JARVIS uses the microphone only to listen for your voice commands.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>JARVIS uses Calendar only when you ask it to read or create an event.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>JARVIS uses Reminders only when you ask it to read or create a reminder.</string>
 </dict>
 </plist>

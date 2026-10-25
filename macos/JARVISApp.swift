@@ -112,6 +112,11 @@ final class RuntimeController: ObservableObject {
     child.environment = ProcessInfo.processInfo.environment.merging([
       "PORT": "5173",
       "JARVIS_FACE_PORT": "5173",
+      // This is a packaged, local-only desktop assistant. Individual services
+      // still prompt through macOS before Calendar, Reminders, or Mail can be
+      // touched; the bridge additionally accepts only its tiny fixed command
+      // grammar, never spoken shell code.
+      "JARVIS_ALLOW_MACOS_ACTIONS": "1",
     ]) { _, new in new }
     child.standardOutput = Pipe()
     child.standardError = Pipe()
