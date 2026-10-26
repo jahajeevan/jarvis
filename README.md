@@ -15,12 +15,12 @@ JARVIS combines a reactive holographic interface with a local Qwen model, offlin
 ## Live macOS demo
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/jahajeevan/jarvis/main/docs/assets/demo/jarvis-live-demo.mp4">
+  <a href="https://jahajeevan.github.io/jarvis/">
     <img src="./docs/assets/demo/jarvis-live-preview.gif" alt="Animated preview of the real JARVIS macOS interface responding to voice input" width="100%" />
   </a>
 </p>
 
-<p align="center"><sub>Real macOS capture · local brain online · click the preview to open the 1080p demo with audio.</sub></p>
+<p align="center"><sub>Real macOS capture · local brain online · click the preview to watch the 1080p demo with audio.</sub></p>
 
 ### Interface states
 
