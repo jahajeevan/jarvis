@@ -77,8 +77,11 @@ final class RuntimeController: ObservableObject {
   private var faceProcess: Process?
   private var ollamaProcess: Process?
   private var timer: Timer?
+  private var restartWorkItem: DispatchWorkItem?
+  private var stopping = false
 
   func start() {
+    stopping = false
     Task {
       let bridgeReady = await bridgeIsHealthy()
       let ollamaReady = await ollamaIsHealthy()
@@ -98,6 +101,9 @@ final class RuntimeController: ObservableObject {
   /// app exits prevents an orphaned Vite process from blocking the next launch
   /// and leaving JARVIS with an apparently live but unresponsive face.
   func stop() {
+    stopping = true
+    restartWorkItem?.cancel()
+    restartWorkItem = nil
     timer?.invalidate()
     timer = nil
     for child in [process, faceProcess, ollamaProcess] {
@@ -166,6 +172,7 @@ final class RuntimeController: ObservableObject {
       DispatchQueue.main.async {
         self?.process = nil
         self?.status = "Local services stopped"
+        self?.scheduleRecovery()
       }
     }
 
@@ -192,7 +199,11 @@ final class RuntimeController: ObservableObject {
     child.standardOutput = Pipe()
     child.standardError = Pipe()
     child.terminationHandler = { [weak self] _ in
-      DispatchQueue.main.async { self?.faceProcess = nil }
+      DispatchQueue.main.async {
+        self?.faceProcess = nil
+        self?.status = "Visual interface stopped — retrying"
+        self?.scheduleRecovery()
+      }
     }
     do {
       try child.run()
@@ -208,9 +219,32 @@ final class RuntimeController: ObservableObject {
     timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
       Task { @MainActor in
         guard let self else { return }
-        self.status = await self.localBrainIsHealthy() ? "Local brain online" : "Waiting for local brain…"
+        let bridgeReady = await self.bridgeIsHealthy()
+        let faceReady = await self.faceIsHealthy()
+        self.status = bridgeReady && faceReady ? "Local brain online" : "Restoring local services…"
+        if !bridgeReady || !faceReady { self.scheduleRecovery() }
       }
     }
+  }
+
+  /** A local dev server can exit while Vite refreshes or while a previous app
+   * run releases its port. Leaving the native WebView black in that state is
+   * worse than a short retry: all services are loopback-only and safe to start
+   * again. One coalesced retry prevents an exit storm from spawning copies. */
+  private func scheduleRecovery() {
+    guard !stopping, restartWorkItem == nil else { return }
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, !self.stopping else { return }
+      self.restartWorkItem = nil
+      Task { @MainActor in
+        let bridgeReady = await self.bridgeIsHealthy()
+        let faceReady = await self.faceIsHealthy()
+        if !bridgeReady { self.launchServices() }
+        else if !faceReady { self.launchFace() }
+      }
+    }
+    restartWorkItem = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
   }
 
   private func bridgeIsHealthy() async -> Bool {
