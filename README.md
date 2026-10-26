@@ -2,7 +2,17 @@
 
 **A local-first, cinematic desktop assistant for macOS.**
 
+<p align="center">
+  <img src="macos/JARVIS.svg" alt="JARVIS app icon" width="130" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/jarvis-system-overview.svg" alt="Visual overview of the JARVIS local-first desktop system" width="100%" />
+</p>
+
 JARVIS combines a reactive holographic interface with a local Qwen model, offline speech-to-text, optional local neural speech, gesture controls, private memory, and opt-in web research. It is designed to feel like a showpiece while keeping your conversations and device data on your machine by default.
+
+> **Visuals in this README are generated from the real project architecture.** Add screenshots from a running JARVIS session to `docs/assets/screenshots/` to extend this overview with product demos.
 
 For the installed macOS app, place NVIDIA settings in `~/Library/Application Support/JARVIS/.env.local`; this location is deliberately outside the app bundle and Git checkout. The app reads only `JARVIS_BRAIN`, `JARVIS_NVIDIA_API_KEY`, and `JARVIS_NVIDIA_URL` from that file.
 
